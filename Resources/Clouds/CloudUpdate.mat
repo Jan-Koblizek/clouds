@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 6
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: CloudUpdate
+  m_Shader: {fileID: 4800000, guid: c7226a21b479e5241a810fba7ca92949, type: 3}
+  m_ShaderKeywords: 
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _3dTexture:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _3dTexture_Distort:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Cloud_Map:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _RenderTexture:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Floats:
+    - _Coverage: 0.4
+    - _Density: 0.04
+    - _FrameNumber: 0
+    - _HdrExposure: 1.3
+    - _Speed: 0
+    - _SunStrength: 1
+    m_Colors:
+    - _Clouds_Abmient_Bottom: {r: 1, g: 0.5901507, b: 0, a: 1}
+    - _Clouds_Abmient_Top: {r: 1.1764706, g: 1.0928246, b: 0.8808132, a: 1}
+    - _Clouds_Ambient_Bottom: {r: 0.41509432, g: 0.41509432, b: 0.41509432, a: 1}
+    - _Clouds_Ambient_Top: {r: 0.63759345, g: 0.653892, b: 0.6792453, a: 1}
+    - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+    - _GroundColor: {r: 0.41437605, g: 0.8207547, b: 0, a: 1}
+    - _PositionDirection: {r: 0, g: 0, b: 0, a: 1}
+    - _SunTint: {r: 1, g: 1, b: 1, a: 1}
