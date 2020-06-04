@@ -38,6 +38,8 @@ Shader "Unlit/CloudMapShader"
 		[HideInInspector]_DeltaTime("Delta Time", float) = 0.0
 		//If this is the first time the cloud texture is rendered in this game (1) otherwise (0)
 		[HideInInspector]_First("First", int) = 0
+		//Description of the chance for different cloud types to appear
+		[HideInInspector]_CloudTypeProbs("CloudTypeProbabilities", Vector) = (0.3, 0.4, 0.3, 0.0)
     }
     SubShader
     {
@@ -61,6 +63,7 @@ Shader "Unlit/CloudMapShader"
 			float _Speed;
 			float _DeltaTime;
 			int _First;
+			float4 _CloudTypeProbs;
 		
 			float hash13(float3 p3)
 			{
@@ -79,8 +82,8 @@ Shader "Unlit/CloudMapShader"
 
 			float random(in float2 st) {
 				return frac(sin(dot(st.xy,
-					float2(12.9898, 78.233)))*
-					43758.5453123);
+					float2(12.9898, 78.233))*
+					43758.5453123));
 			}
 			//Generates the Perlin Noise with one octave
 			float noise(float2 pos, int mult) {
@@ -99,8 +102,8 @@ Shader "Unlit/CloudMapShader"
 					(d - b) * u.x * u.y;
 			}
 
-			//Generates Perlin noise (8 octaves)
-			#define OCTAVES 8
+			//Generates Perlin noise (4 octaves)
+			#define OCTAVES 4
 			float perlin(float2 pos, int mult) {
 
 				float value = 0.0;
@@ -116,7 +119,7 @@ Shader "Unlit/CloudMapShader"
 				return value;
 			}
 
-
+			//Worley noise
 			float worley(float2 x, int tile, float coverage) {
 				float2 p = floor(x);
 				float2 f = frac(x);
@@ -140,18 +143,71 @@ Shader "Unlit/CloudMapShader"
 					}
 				}
 
-				return clamp(pow(1. + pow(0.7 * coverage + 0.2, 2) - minDist, 6) / 4, 0., 1.);
+				return clamp(pow(1. + pow(0.5 * coverage + 0.25, 2) - minDist, 6) / 4, 0., 1.);
 			}
 
-			//Tilable voronoi - allows seamless tiling of the texture
-			float tilableWorley(float2 x, const int octaves, float tile, float coverage) {
+			//Picks the cloud type at position x.
+			float3 worleyColor(float2 x, int tile, float coverage) {
+				float2 p = floor(x);
+				float2 f = frac(x);
+				float2 closest = p;
+
+				float minDistRed = 1.;
+				float minDistGreen = 1.;
+				float minDistBlue = 1.;
+				float minDist = 100.;
+				for (int j = -1; j <= 1; j++) {
+					for (int i = -1; i <= 1; i++) {
+						float2 b = float2(i, j);
+						float2 c = p + b;
+
+						if (tile > 0.) {
+							c = c % float2(tile, tile);
+						}
+
+						float2 r = float2(b)-f + hash12(c);
+						float dist = dot(r, r);
+
+						if (dist < minDist) {
+							minDist = dist;
+						}
+
+						float colHash = random(c);
+						if (colHash < _CloudTypeProbs.x)
+						{
+							if (dist < minDistRed) {
+								minDistRed = dist;
+							}
+						}
+						else if (colHash < (_CloudTypeProbs.x + _CloudTypeProbs.y)) {
+							if (dist < minDistGreen) {
+								minDistGreen = dist;
+							}
+						}
+						else {
+							if (dist < minDistBlue) {
+								minDistBlue = dist;
+							}
+						}
+					}
+				}
+
+				return float3(pow(minDist / minDistRed, 3 - 2*coverage), pow(minDist/minDistGreen, 3 - 2 * coverage), pow(minDist/minDistBlue, 3 - 2 * coverage));
+			}
+
+			//Tilable worley - allows seamless tiling of the texture, returns the cloud type at the position in cloudTyepes variable
+			float tilableWorley(float2 x, const int octaves, float tile, float coverage, out float3 cloudTypes) {
 				float f = 1.;
-				float a = 1.;
+				float a = 0.5;
 				float c = 0.;
 				float w = 0.;
 
 				if (tile > 0.) f = tile;
 
+				//Get the cloud type at this position
+				cloudTypes = worleyColor(x * f, f, coverage);
+
+				//Layered Worley
 				for (int i = 0; i < octaves; i++) {
 					c += a * worley(x * f, f, coverage);
 					f *= 2.0;
@@ -190,9 +246,6 @@ Shader "Unlit/CloudMapShader"
 
             fixed4 frag (v2f i) : SV_Target
 			{
-				/*
-				Generates cloud map (for cummulus) using perlin noise
-				*/
 
 				/*
 				The amount the clouds moved since the beginning of the game (in x and y directions)
@@ -206,13 +259,15 @@ Shader "Unlit/CloudMapShader"
 				float2 shiftFrame = float2(_DeltaTime * _Speed * _PositionDirection.z / 20000, _DeltaTime * _Speed * _PositionDirection.w / 20000);
 				
 
-				//If this is the first frame return perlin noise with the specified coverage output(cummulus, stratus, 0, coverage)
+				//If this is the first frame return cloud map with initial coverage specified by the user
 				if (_First == 1)
 				{
-					float perlinValue = clamp(perlin((uv) * 16, 16) + 0.2, 0., 1.);
-					float worleyValue = tilableWorley(uv, 3, 8, _Coverage);
-					//return float4(pow(perlinValue, pow(2 - 2 * perlinValue, 1)) * worleyValue, 0., 0., _Coverage);
-					return float4(clamp(perlinValue * worleyValue, 0.5 * worleyValue, 0.6 + pow(_Coverage, 100)), 0., 0., _Coverage);
+					//Combine perlin and worley noises to get the basic cloud shapes
+					float perlinValue = clamp(perlin((uv) * 64, 64) + 0.2, 0., 1.);
+					float3 types;
+					float worleyValue = tilableWorley(uv, 3, 8, _Coverage, types);
+					float mapValue = clamp((0.5 + 0.5*perlinValue) * worleyValue, 0.2 * worleyValue, 0.6 + pow(_Coverage, 100));
+					return float4(types*mapValue, _Coverage);
 				}
 				//Not the first frame - use already rendered cloud-map
 				else {
@@ -231,15 +286,13 @@ Shader "Unlit/CloudMapShader"
 						coverage = tex2D(_MainTex, i.uv).a + clamp(0.001 * (_CoverageChangeTo - tex2D(_MainTex, i.uv).a), 0.0001, 0.001) * clamp(dot(vectorToEdge, wind), 0.2, 1.) * _Speed / 100;
 					}
 
-					//Return perlin noise with the coverage we got from the previous condition
-					float perlinValue = clamp(perlin((uv) * 16, 16) + 0.2, 0., 1.);
-					//return float4(pow(perlinValue, pow(2 - 2 * perlinValue, 1)), 0., 0., coverage);
-					float worleyValue = tilableWorley(uv, 3, 8, coverage);
-					//return float4(pow(perlinValue, pow(2 - 2 * perlinValue, 1)) * worleyValue, 0., 0., coverage);
-					return float4(clamp(perlinValue * worleyValue, 0.5 * worleyValue, 0.6 + pow(coverage, 100)), 0., 0., coverage);
+					//Combine perlin and worley noises to get the basic cloud shapes
+					float perlinValue = clamp(perlin((uv) * 64, 64) + 0.2, 0., 1.);
+					float3 types;
+					float worleyValue = tilableWorley(uv, 3, 8, coverage, types);
+					float mapValue = clamp((0.5 + 0.5*perlinValue) * worleyValue, 0.2 * worleyValue, 0.6 + pow(coverage, 4));
+					return float4(types*mapValue, coverage);
 				}
-
-                //return half4(pow(fbm((uv) * 16, 16), pow(2.4 - 2 * fbm((uv) * 16, 16), 1)), 0., 0., 1.);
             }
             ENDCG
         }

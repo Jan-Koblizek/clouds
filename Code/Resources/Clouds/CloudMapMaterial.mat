@@ -24,10 +24,11 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Floats:
-    - _Coverage: 0.65
-    - _CoverageChangeTo: 0.531
+    - _Coverage: 0.554
+    - _CoverageChangeTo: 1
     - _DeltaTime: 0
     - _First: 1
-    - _Speed: 50
+    - _Speed: 4
     m_Colors:
+    - _CloudTypeProbs: {r: 0, g: 1, b: 0, a: 0}
     - _PositionDirection: {r: 0, g: 0, b: -1, a: -0}

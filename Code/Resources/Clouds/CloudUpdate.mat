@@ -41,7 +41,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Floats:
     - _Coverage: 0.4
-    - _Density: 0.6
+    - _Density: 0.2
     - _FrameNumber: 0
     - _HdrExposure: 1.3
     - _Speed: 0
@@ -54,4 +54,4 @@ Material:
     - _Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
     - _GroundColor: {r: 0.41437605, g: 0.8207547, b: 0, a: 1}
     - _PositionDirection: {r: 0, g: 0, b: -1, a: -0}
-    - _SunTint: {r: 1, g: 0.9778554, b: 0.9292453, a: 1}
+    - _SunTint: {r: 1, g: 1, b: 1, a: 1}

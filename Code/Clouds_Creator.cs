@@ -25,7 +25,6 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-
 public enum QUALITY:int
 {
     Low = 64,
@@ -48,6 +47,16 @@ public class Clouds_Creator : MonoBehaviour
     public Camera characterCamera;
     //quality of the clouds - high, medium, low
     public QUALITY quality = QUALITY.Medium;
+
+    public Texture2D cloudMap;
+    public bool generateCloudMap = true;
+    [ConditionalProperty("generateCloudMap")]
+    public float cumulusAppearanceProbability = 0.3f;
+    [ConditionalProperty("generateCloudMap")]
+    public float stratusAppearanceProbability = 0.3f;
+    [ConditionalProperty("generateCloudMap")]
+    public float stratocumulusAppearanceProbability = 0.3f;
+
     [Range(0.0f, 1.0f)]
     //the amount and thickness of the clouds
     public float coverage = (float)0.4;
@@ -55,8 +64,6 @@ public class Clouds_Creator : MonoBehaviour
     //coverage will change to this value in the incoming clouds
     public float coverageChangeTo = (float)1.0;
 
-    //[Range(0.0f, 1.0f)]
-    //public float density = 0.5f;
     //direction of the wind (clouds move in this direction
     public WindDirection windDirection;
     //speed of the wind (do not use value higher than 20)
@@ -72,10 +79,6 @@ public class Clouds_Creator : MonoBehaviour
     public Color ambientColorTop = new Color(129.0f * (1.5f / 255.0f), 147.0f * (1.5f / 255.0f), 180.0f * (1.5f / 255.0f));
     public Color ambientColorBottom = new Color(110.0f * (1.5f / 255.0f), 112.0f * (1.5f / 255.0f), 117.0f * (1.5f / 255.0f));
 
-    //cloud map the program should use (if generate cloud map is set to true the program generates its own cloud map)
-    public Texture cloudMap;
-    public bool generateCloudMap = true;
-
     //position of the clouds (the shift caused by the wind)
     private Vector2 position = new Vector2((float)0.0, (float)0.0);
 
@@ -89,7 +92,7 @@ public class Clouds_Creator : MonoBehaviour
 
     //update texture - generates update values for 1/16 of all pixels
     private RenderTexture skyTextureUpdate;
-    //texture of clouds used to overlay the standart Unity procedural sky
+    //texture of clouds used to overlay the standard Unity procedural sky
     private RenderTexture skyTexture;
     private RenderTexture skyTexture2;
     private bool useSecondTexture;
@@ -104,6 +107,8 @@ public class Clouds_Creator : MonoBehaviour
     private Material shadowMaterial;
     private MeshRenderer shadowPlane;
 
+    private RenderTexture test;
+
     //number of the frame % 16 - tells us which pixels of the skyTexture are updated this frame
     private int frameNumber = 0;
     //time of the last frame
@@ -111,11 +116,15 @@ public class Clouds_Creator : MonoBehaviour
 
     private Vector3 previousPosition;
 
+    float deltaTime = 0.0f;
+
+    //Updates the cloud texture
     private void updateTexture(bool first)
     {
         Vector3 cameraShift = characterCamera.transform.position - previousPosition;
         previousPosition = characterCamera.transform.position;
         Vector2 shift;
+        //Do use no shift the first frame
         if (first)
         {
             shift = new Vector2(0,0);
@@ -125,7 +134,7 @@ public class Clouds_Creator : MonoBehaviour
             shift = new Vector2(-cameraShift.x + windDirection.X * windSpeed * (Time.time - lastUpdateTime),
                 -cameraShift.z + windDirection.Z * windSpeed * (Time.time - lastUpdateTime));
         }
-
+        
         updateTextureMaterial.SetVector("_PositionDirection", new Vector4(position.x, position.y, -windDirection.X, -windDirection.Z));
         updateTextureMaterial.SetFloat("_Speed", windSpeed * (Time.time - lastUpdateTime));
         //Renders the update texture from the updateTextureMaterial
@@ -135,6 +144,7 @@ public class Clouds_Creator : MonoBehaviour
         RenderTexture.ReleaseTemporary(tepmoraryUpdate);
 
         skyTextureMaterial.SetVector("_Shift", new Vector4(-shift.x, -shift.y, 0.0f, 0.0f));
+
         if (first)
         {
             skyTextureMaterial.SetInt("_First", 1);
@@ -143,7 +153,9 @@ public class Clouds_Creator : MonoBehaviour
         {
             skyTextureMaterial.SetInt("_First", 0);
         }
+
         //Renders the sky texture from skyTextureMaterial (previously rendered texture is used as its update texture)
+        
         if (useSecondTexture)
         {
             Graphics.Blit(skyTexture, skyTexture2, skyTextureMaterial);
@@ -156,13 +168,6 @@ public class Clouds_Creator : MonoBehaviour
             useSecondTexture = true;
             RenderSettings.skybox.SetTexture("_Texture", skyTexture);
         }
-        /*
-        RenderTexture temporarySkyTexture = RenderTexture.GetTemporary(skyTexture.width, skyTexture.height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
-        //Copy the previous sky texture into a teporary texture used as the main texture in the skyTextureMaterial
-        Graphics.Blit(skyTexture, temporarySkyTexture);
-        Graphics.Blit(temporarySkyTexture, skyTexture, skyTextureMaterial);
-        RenderTexture.ReleaseTemporary(temporarySkyTexture);
-        */
 
         //Increase the FrameNumber by 1 - so we do not update the same 1/16 of the pixels each frame.
         frameNumber = (frameNumber + 1) % 16;
@@ -255,7 +260,7 @@ public class Clouds_Creator : MonoBehaviour
         updateTextureMaterial.SetFloat("_HdrExposure", HDRExposure);
         updateTextureMaterial.SetColor("_Clouds_Ambient_Bottom", ambientColorBottom);
         updateTextureMaterial.SetColor("_Clouds_Ambient_Top", ambientColorTop);
-        updateTextureMaterial.SetFloat("_Density", 0.6f);
+        updateTextureMaterial.SetFloat("_Density", 0.2f);
         RenderSettings.skybox.SetColor("_SunTint", sunTint);
         RenderSettings.skybox.SetFloat("_HdrExposure", HDRExposure);
         RenderSettings.skybox.SetColor("_Color", atmosphereTint);
@@ -294,13 +299,21 @@ public class Clouds_Creator : MonoBehaviour
         /*
         Cloud Map - 2D texture tells us the cloud density at different parts of the sky
         */
+        generatedCloudMap = new RenderTexture(512, 512, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+        generatedCloudMap.enableRandomWrite = true;
+        generatedCloudMap.Create();
         if (generateCloudMap)
         {
-            generatedCloudMap = new RenderTexture(512, 512, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
-            generatedCloudMap.enableRandomWrite = true;
-            generatedCloudMap.Create();
+            float totalProbability = cumulusAppearanceProbability + stratusAppearanceProbability + stratocumulusAppearanceProbability;
+            if (totalProbability > 0.0)
+            {
+                cloudMapMaterial.SetVector("_CloudTypeProbs", new Vector4(cumulusAppearanceProbability / totalProbability, 
+                    stratusAppearanceProbability / totalProbability, stratocumulusAppearanceProbability / totalProbability, 0.0f));
+            }
+            else {
+                cloudMapMaterial.SetVector("_CloudTypeProbs", new Vector4(0.4f, 0.3f, 0.3f, 0.0f));
+            }
             cloudMapGenerate(1);
-            
             //Setting cloud map for the cloud update shader.
             updateTextureMaterial.SetTexture("_Cloud_Map", generatedCloudMap);
             shadowMaterial.SetTexture("_MainTex", generatedCloudMap);
@@ -328,9 +341,9 @@ public class Clouds_Creator : MonoBehaviour
         RenderSettings.skybox.SetTexture("_Texture", skyTexture);
         skyTexture.Create();
 
+
         skyTexture2 = new RenderTexture(4 * (int)quality, 4 * (int)quality / 2, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
         skyTexture2.enableRandomWrite = true;
-        RenderSettings.skybox.SetTexture("_Texture", skyTexture);
         skyTexture2.Create();
 
         useSecondTexture = false;
@@ -361,6 +374,7 @@ public class Clouds_Creator : MonoBehaviour
 
     void Update()
     {
+        deltaTime += (Time.unscaledDeltaTime - deltaTime) * 0.1f;
         /*
          If settings change in the Unity inspector call the Start() function again and initialize all the necessary materials, shaders and textures there.
          */
@@ -374,6 +388,7 @@ public class Clouds_Creator : MonoBehaviour
             }
             skyTextureUpdate.Release();
             skyTexture.Release();
+            skyTexture2.Release();
             this.Start();
         }
         else
@@ -382,23 +397,18 @@ public class Clouds_Creator : MonoBehaviour
             Generate update texture from the updateTextureMaterial
             */
             updateTexture(false);
-            
+
 
             //Generates a cloud map for the next frame
+            
             if (generateCloudMap)
             {
                 cloudMapGenerate(0);
             }
+            
             position = position + new Vector2(-windDirection.X, -windDirection.Z) * windSpeed * (Time.time - lastUpdateTime);
             lastUpdateTime = Time.time;
         }
 
     }
- 
-/*
-    void OnGUI()
-    {
-        GUI.DrawTexture(new Rect(0, 0, 512, 512), skyTexture, ScaleMode.StretchToFill, false);
-    }
-*/
 }

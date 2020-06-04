@@ -118,22 +118,20 @@ Shader "Unlit/skyTexture"
 				}
 				else if (_First == 0)
 				{
-					/*
-					Reprojection taking cloud and camera movement into account
-					*/
-					float yDir = clamp(sin(i.uv.y*1.5708), 0.01, 1.0);
-					float distSide = sqrt(1 - yDir * yDir);
-					float3 eyeRay = float3(-sin(2 * 3.14159 * (i.uv.x)) * distSide, sin(i.uv.y*1.5708), -cos(2 * 3.14159 * (i.uv.x)) * distSide);
-					float2 xzPosition = float2(eyeRay.x * 700 / yDir, eyeRay.z * 700 / yDir) + _Shift.xy;
-					float3 correctedEyeRay = normalize(float3(xzPosition.x, 700, xzPosition.y));
-					float y;
-					
-					//distSide = sqrt(eyeRay.x * eyeRay.x + eyeRay.z * eyeRay.z);
-					y = asin(correctedEyeRay.y) / 1.5708;
+				//Reprojection taking cloud and camera movement into account
+				float yDir = clamp(sin(i.uv.y*1.5708), 0.01, 1.0);
+				float distSide = sqrt(1 - yDir * yDir);
+				float3 eyeRay = float3(-sin(2 * 3.14159 * (i.uv.x)) * distSide, sin(i.uv.y*1.5708), -cos(2 * 3.14159 * (i.uv.x)) * distSide);
+				float2 xzPosition = float2(eyeRay.x * 900 / yDir, eyeRay.z * 900 / yDir) + _Shift.xy;
+				float3 correctedEyeRay = normalize(float3(xzPosition.x, 900, xzPosition.y));
+				float y;
 
-					float x = ((atan2(correctedEyeRay.x, correctedEyeRay.z) + 3.14159) / (2 * 3.14159));
-					
-					col = tex2D(_MainTex, float2(x, y));
+				//distSide = sqrt(eyeRay.x * eyeRay.x + eyeRay.z * eyeRay.z);
+				y = asin(correctedEyeRay.y) / 1.5708;
+
+				float x = ((atan2(correctedEyeRay.x, correctedEyeRay.z) + 3.14159) / (2 * 3.14159));
+
+				col = tex2D(_MainTex, float2(x, y));
 				}
 				else {
 					col = tex2D(_MainTex, i.uv);

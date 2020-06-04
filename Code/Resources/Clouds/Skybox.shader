@@ -304,6 +304,8 @@ Shader "Skybox/Skybox-Image" {
 				half4 frag(v2f IN) : SV_Target
 				{
 					half3 col;
+					//Describes, if the sky is covered by clouds
+					float alpha = 1.0;
 					if (IN.rayDir.y < 0.0)
 					{
 						half eyeCos = dot(_WorldSpaceLightPos0.xyz, normalize(IN.rayDir.xyz));
@@ -349,9 +351,10 @@ Shader "Skybox/Skybox-Image" {
 						float dist;
 						dist = intersectClouds(rayDir, 550.);
 						half3 colFog = colWithoutSun;
-						float4 fog = float4(colFog, clamp((pow(dist / 500, 0.25)) / 2., 0., 1.));
+						float4 fog = float4(colFog, clamp((pow(dist / 2000, 0.5)) / 2., 0., 1.));
 						col.rgb = lerp(col.rgb, col2.rgb, 1 - col2.a);
 						col.rgb = lerp(col.rgb, fog.rgb, fog.a);
+						alpha = 1 - col2.a;
 					}
 					else
 					{
@@ -361,7 +364,8 @@ Shader "Skybox/Skybox-Image" {
 						#endif
 					}
 
-					return half4(col.rgb ,1.0);
+					//Color of the sky + how much is it covered by clouds
+					return half4(col.rgb, alpha);
 
 				}
 				ENDCG

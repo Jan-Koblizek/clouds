@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-Shader "Unlit/Test"
+Shader "Unlit/Clouds_Update"
 {
 	Properties
 	{
@@ -72,9 +72,7 @@ Shader "Unlit/Test"
 						#define WR (0.68*lerp(MN, MX, pow(_Color.r,GAMMA)))
 						#define WG (0.55*lerp(MN, MX, pow(_Color.g,GAMMA)))
 						#define WB (0.44*lerp(MN, MX, pow(_Color.b,GAMMA)))
-						//#define WR pow(0.65,GAMMA)
-						//#define WG pow(0.57,GAMMA)
-						//#define WB pow(0.475,GAMMA)
+
 						static const float3 kInvWavelength = float3(1.0 / (WR*WR*WR*WR), 1.0 / (WG*WG*WG*WG), 1.0 / (WB*WB*WB*WB));
 						#define OUTER_RADIUS 6478000.0
 						static const float kOuterRadius = OUTER_RADIUS;
@@ -100,18 +98,18 @@ Shader "Unlit/Test"
 						#define MIE_G (-0.98)
 						#define MIE_G2 0.9604
 
-						#define CLOUD_MARCH_STEPS 32
+						#define CLOUD_MARCH_STEPS 64
 						#define CLOUD_SELF_SHADOW_STEPS 6
 						#define CLOUDS_SHADOW_MARCH_STEP_SIZE (20.)
 						#define CLOUDS_SHADOW_MARCH_STEP_MULTIPLY (1.5)
 
-						#define CLOUDS_BOTTOM   (450.)
-						#define CLOUDS_TOP      (1150.)
+						#define CLOUDS_BOTTOM   (500.)
+						#define CLOUDS_TOP      (2000.)
 
 
 
 						#define CLOUDS_DETAIL_STRENGTH (.3)
-						#define CLOUDS_FORWARD_SCATTERING_G (.4)
+						#define CLOUDS_FORWARD_SCATTERING_G (.7)
 
 						#define CLOUDS_MIN_TRANSMITTANCE .08
 
@@ -201,7 +199,10 @@ Shader "Unlit/Test"
 			}
 
 			float stratusGradient(float norY) {
-				return linearstep(0., 0.2, norY) - linearstep(0.2, 0.4, norY);
+				return linearstep(0.05, 0.15, norY) - linearstep(0.2, 0.25, norY);
+			}
+			float stratocumulusGradient(float norY) {
+				return linearstep(-0.05, 0.15, norY) - linearstep(0.15, 0.65, norY);
 			}
 
 			/*
@@ -211,7 +212,7 @@ Shader "Unlit/Test"
 				float3 shift = float3(_PositionDirection.x + (_Speed * _PositionDirection.z / 20000),
 					0.,
 					_PositionDirection.y + (_Speed * _PositionDirection.w / 20000));
-				float3 uv = (p + shift * 0.8) * (0.003 * CLOUDS_BASE_SCALE);
+				float3 uv = (p + shift * 0.8) * (0.002 * CLOUDS_BASE_SCALE);
 				float4 cloud = tex3D(_3dTexture_Distort, frac(uv));
 
 				return 0.5*cloud.r + 0.25 * cloud.g + 0.25*cloud.b - 0.5;
@@ -221,103 +222,115 @@ Shader "Unlit/Test"
 			Samples clouds - return value is used for cummulus as it is for stratus it is modified by the inout value detail
 			inout float3 detail - Layered Voronoi texture at different frequencies - used for basic cloud shapes
 			*/
-			float cloudMapBase(float3 p, inout float3 detail) {
+			float cloudMapBase(float3 p) {
 				//Shift clouds had since the first frame
 				float3 shift = float3(_PositionDirection.x + (_Speed * _PositionDirection.z / 20000),
 					0.,
 					_PositionDirection.y + (_Speed * _PositionDirection.w / 20000));
 				float3 uv = (p + shift * 0.9) * (0.0002 * CLOUDS_BASE_SCALE);
 				float4 cloud = tex3D(_3dTexture, frac(uv));
-				detail = float3(cloud.g, cloud.b, cloud.a);
-				return 0.6 * cloud.r + 0.6 * cloud.g + 1.0 * cloud.b + 0.1*cloud.a;
+				return 0.25 * cloud.r + 0.25 * cloud.g + 0.45 * cloud.b + 0.05*cloud.a;
 			}
 
 			/*
 			Samples clouds for raymarch steps
 			*/
-			float cloudMap(float3 pos, float dist) {
+			float cloudMap(float3 pos, float dist, out bool inClouds) {
 				/*
 				Samples the Cloud Map - red is used for cummulus and green for stratus
 				*/
+				inClouds = false;
 				float2 uv = (pos.xz * 0.00004) + float2(0.5, 0.5);
-				float4 texMap = tex2D(_Cloud_Map, uv);
-				float cumulusMultiplier = cumulusGradient((pos.y - CLOUDS_BOTTOM) / 800.) * texMap.r;
-				float stratusMultiplier = stratusGradient((pos.y - CLOUDS_BOTTOM) / 800.) * texMap.g;
-				if ((cumulusMultiplier < 0.25) && (stratusMultiplier < 0.1))
+				float4 texMap = tex2D(_Cloud_Map, (uv % 1 + float2(1.0, 1.0)) % 1);
+				float cumulusMultiplier = cumulusGradient((pos.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM))) * texMap.r;
+				float stratusMultiplier = stratusGradient((pos.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM))) * texMap.g;
+				float stratocumulusMultiplier = stratocumulusGradient((pos.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM))) * texMap.b;
+				if ((cumulusMultiplier < 0.2) && (stratocumulusMultiplier < 0.2) && (stratusMultiplier < 0.2))
 				{
+					if (stratusMultiplier > 0.1) {
+						inClouds = true;
+					}
 					return 0.0;
 				}
-				float3 bigDetail;
-				float m = clamp(cloudMapBase(pos, bigDetail), 0.5, 1.5);
+				
+				float m = clamp(cloudMapBase(pos), 0.5, 1.5);
 
-				/*
-				Cumulus gradient - it is thicker and fades out both on the top and bottom - making more bulky clouds
-				*/
 				float mCumulus = m * cumulusMultiplier;
-				float mStratus = m;
-
-				//Using the cloud texture to modify the amount of clouds at given point
-
-				/*
-				Stratus uses smaller cloud texture (bigDetail.y), stratus gradient is thinner.
-				*/
-				//mStratus = 0.3 * mStratus + (2.1 * bigDetail.y) * (0.2 * mStratus + 0.6);
-				mStratus *= stratusMultiplier;
+				float mStratus = m * stratusMultiplier;
+				float mStratocumulus = m * stratocumulusMultiplier;
 			
 
 				
-				mStratus -= cloudMapDetail(pos) * CLOUDS_DETAIL_STRENGTH * 2;
-				
-				mStratus -= 0.4;
-
-				mStratus *= texMap.g;
+				mStratus -= 0.2;
 
 				mCumulus *= 2;
-				mCumulus -= 0.8;
+				mCumulus -= 0.4;
+
+				mStratocumulus *= 2;
+				mStratocumulus -= 0.4;
 				
 				/*
 				Modify the cumulus with detail 3D noise texture
 				We only take detail into account if we have sampled density of the clouds > -0.1
-				Otherwise small detail might appear outside of the general clud shapes
+				Otherwise small detail might appear outside of the general cloud shapes
 				*/
 
-				if (mCumulus > -0.1)
+				if (abs(mCumulus) < 0.05)
 				{
-					float decreaseDetail = clamp(dist / 800, 1.0, 20.0);
-					mCumulus -= cloudMapDetail(pos) * CLOUDS_DETAIL_STRENGTH * 2 / decreaseDetail;
+					inClouds = true;
+					float decreaseDetail = clamp(dist / float((CLOUDS_TOP - CLOUDS_BOTTOM)), 1.0, 20.0);
+					mCumulus -= cloudMapDetail(pos) * CLOUDS_DETAIL_STRENGTH / decreaseDetail;
 				}
 
+				if (abs(mStratocumulus) < 0.05)
+				{
+					inClouds = true;
+					float decreaseDetail = clamp(dist / float((CLOUDS_TOP - CLOUDS_BOTTOM)), 1.0, 20.0);
+					mStratocumulus -= cloudMapDetail(pos) * CLOUDS_DETAIL_STRENGTH / decreaseDetail;
+				}
+
+				if (abs(mStratus) < 0.05)
+				{
+					inClouds = true;
+					mStratus -= cloudMapDetail(pos) * CLOUDS_DETAIL_STRENGTH;
+				}
+				mStratus *= 2;
+				mStratus *= texMap.g;
+
 				
-				return clamp((clamp(mStratus, 0., 10.) + clamp(mCumulus, 0., 10.)) * _Density * 0.1, 0., 1.);
+				return clamp(max(max(clamp(mStratus, 0., 10.), clamp(mCumulus, 0., 10.)), clamp(mStratocumulus, 0., 10.)) * _Density, 0., 1.);
 			}
 
 			/*
 			Samples clouds for self shadow steps simmilar to cloudMap() function
 			*/
 			float cloudMapShadow(float3 pos) {
-				float3 bigDetail;
-				float m = clamp(cloudMapBase(pos, bigDetail), 0.5, 1.5);
-
-				float mCumulus = m * cumulusGradient((pos.y - CLOUDS_BOTTOM) / 800.);
-				float mStratus = m;
-
+				float m = clamp(cloudMapBase(pos), 0.5, 1.5);
 				float2 uv = (pos.xz * 0.00004) + float2(0.5, 0.5);
-				float4 texMap = tex2D(_Cloud_Map, uv);
+				float4 texMap = tex2D(_Cloud_Map, ((uv % 1)+float2(1.0,1.0))%1);
+
+				float stratocumulusMultiplier = stratocumulusGradient((pos.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM))) * texMap.b;
+
+				float mCumulus = 2 * m * cumulusGradient((pos.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM)));
+				float mStratocumulus = 2 * m * stratocumulusMultiplier;
+
 
 
 				mCumulus = mCumulus * texMap.r;
 
-				//uses vlue of 3.5 instead of the noise texture - this makes the cloud more uniform and reduces lightning artifacts
-				mStratus = 3.5;
-				mStratus = texMap.g;
-				mStratus *= stratusGradient((pos.y - CLOUDS_BOTTOM) / 800.);
+				float mStratus = m * texMap.g * stratusGradient((pos.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM)));
 
-				mStratus -= 0.4;
-				mStratus *= 3;
+				mStratus -= 0.2;
+				mStratus *= 2;
+				mStratus *= texMap.g;
 
 				mCumulus -= 0.4;
+				mStratocumulus -= 0.4;
 
-				return clamp((clamp(mStratus, 0., 0.3) + clamp(mCumulus, 0., 0.08)) * _Density * 0.3, 0., 1.);
+				mCumulus = mCumulus * 0.3;
+				mStratocumulus = mStratocumulus * 0.6;
+
+				return clamp(max(max(clamp(mStratus, 0., 1.), clamp(mCumulus, 0., 0.3)), clamp(mStratocumulus, 0., 0.3)) * _Density, 0., 1.);
 			}
 
 
@@ -326,10 +339,11 @@ Shader "Unlit/Test"
 			*/
 			float volumetricShadow(in float3 from) {
 				float dd = CLOUDS_SHADOW_MARCH_STEP_SIZE;
-				float3 rd = normalize(_WorldSpaceLightPos0.xyz);
+				float3 rd;
+				rd = normalize(_WorldSpaceLightPos0.xyz);
 				float d = dd * .5;
 				//Initial light strength
-				float shadow = 5000.0 * clamp(dot(float3(0, 1, 0), rd), 0.0, 1.);
+				float shadow = 2000.0 * clamp(dot(float3(0, 1, 0), rd), 0.0, 1.);
 
 				[unroll(CLOUD_SELF_SHADOW_STEPS)]
 				for (int s = 0; s < CLOUD_SELF_SHADOW_STEPS; s++) {
@@ -348,7 +362,7 @@ Shader "Unlit/Test"
 
 
 			/*
-			Main function for cloud generation - it ray marches and saples clouds on the way
+			Main function for cloud generation - it ray marches and samples clouds on the way
 			*/
 			float4 clouds(float3 ro, float3 rd) {
 				if (rd.y < 0.) {
@@ -360,7 +374,9 @@ Shader "Unlit/Test"
 				float dist = start;
 				//distance to the higher cloud plane
 				float end = intersectClouds(rd, CLOUDS_TOP - ro.y);
-				float sundotrd = dot(rd, normalize(_WorldSpaceLightPos0.xyz));
+				float sundotrd;
+				sundotrd = dot(normalize(_WorldSpaceLightPos0.xyz), normalize(rd));
+
 
 				float d = start;
 				float dD = (end - start) / float(CLOUD_MARCH_STEPS);
@@ -368,6 +384,7 @@ Shader "Unlit/Test"
 				float h = hash13(rd);
 				d -= h * dD;
 
+				
 				//gets HenyeyGreensteun scattering function - makes cloud around the sun brighter
 				float scattering = HenyeyGreenstein(sundotrd, CLOUDS_FORWARD_SCATTERING_G);
 
@@ -375,37 +392,76 @@ Shader "Unlit/Test"
 				//Takes marches in the ray direction - initially the sample color is black
 				//and the transmittance is 1 (clouds are totally transparent)
 				float transmittance = 1.0;
-				//float3 scatteredLight = float3(0.0, 0.0, 0.0);
 				float3 scatteredLight = float3(0., 0., 0.);
 				int s = 0;
-				[unroll(CLOUD_MARCH_STEPS)]
-				for (int s = 0; s < CLOUD_MARCH_STEPS; s++) {
+				//The sample was in clouds or close to them (where they could appear just by adding detail)
+				bool inClouds = false;
+				bool previousClouds = false;
+				
+				//Uses steps of double length
+				[loop]
+				for (int s = 0; s < CLOUD_MARCH_STEPS / 2; s++) {
+					//p is the longer step sample
 					float3 p = ro + d * rd;
+					//if more detail is needed add p2 in between p samples
+					float3 p2 = ro + (d-dD) * rd;
+					//Sample clouds at p
+					float alpha = cloudMap(p, dist + 2 * s * dD, inClouds);
 
+					//If previous step sampled clouds, this sample is still considered to be in the clouds (and smaller steps may be used)
+					if (previousClouds) {
+						inClouds = true;
+					}
+					previousClouds = false;
+					//If this or previous sample was in clouds, small step sample might be used
+					if ((alpha > 0.0)||inClouds) {
+						//If transmittance is > 0.1 use smaller steps
+						if (transmittance > 0.1) {
+							float alpha2 = cloudMap(p2, dist + (2 * s - 1) * dD, inClouds);
+							//If the cloud density at either sample was > 0 calculate lighting there
+							if (alpha2 > 0.0)
+							{
+								float3 ambientLight2 = lerp(_Clouds_Ambient_Bottom, _Clouds_Ambient_Top, (p2.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM)));
+								float3 S2 = pow(SUN_COLOR, 10) * (scattering * volumetricShadow(p2)) * alpha2 + 100 * pow(ambientLight2, 4) * alpha2;
+								float dTrans2 = exp(-alpha2 * dD);
+								float3 Sint2 = (S2 - S2 * dTrans2) * (1. / alpha2);
+								scatteredLight += transmittance * Sint2;
+								transmittance *= dTrans2;
+								previousClouds = true;
+							}
+							if (alpha > 0.0)
+							{
+								float3 ambientLight = lerp(_Clouds_Ambient_Bottom, _Clouds_Ambient_Top, (p.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM)));
+								float3 S = pow(SUN_COLOR, 10) * (scattering * volumetricShadow(p)) * alpha + 100 * pow(ambientLight, 4) * alpha;
+								float dTrans = exp(-alpha * dD);
+								float3 Sint = (S - S * dTrans) * (1. / alpha);
+								scatteredLight += transmittance * Sint;
+								transmittance *= dTrans;
+								previousClouds = true;
+							}
+						}
+						//If transmittance is low, just calculate lighting for the bigger step, if cloud density was greater than 0
+						else if(alpha>0) {
+							//Ambient light - light coming from other sources than the sun
+							float3 ambientLight = lerp(_Clouds_Ambient_Bottom, _Clouds_Ambient_Top, (p.y - CLOUDS_BOTTOM) / float((CLOUDS_TOP - CLOUDS_BOTTOM)));
 
-					float alpha = cloudMap(p, dist + s * dD);
-
-					if (alpha > 0.0) {
-						//Ambient light - light coming from other sources than the sun
-
-						float3 ambientLight = lerp(_Clouds_Ambient_Bottom, _Clouds_Ambient_Top, (p.y - CLOUDS_BOTTOM) / 800.);
-						//volumetricShadow(p)
-						float3 S = (pow(SUN_COLOR, 4) * (scattering * volumetricShadow(p))) * alpha + 100 * pow(ambientLight,4) * alpha;
-						float dTrans = exp(-alpha * dD);
-						float3 Sint = (S - S * dTrans) * (1. / alpha);
-						scatteredLight += transmittance * Sint;
-						transmittance *= dTrans;
-
+							float3 S = pow(SUN_COLOR, 10) * (scattering * volumetricShadow(p)) * alpha + 100 * pow(ambientLight, 4) * alpha;
+							float dTrans = exp(-alpha * 2 * dD);
+							float3 Sint = (S - S * dTrans) * (1. / alpha);
+							scatteredLight += transmittance * Sint;
+							transmittance *= dTrans;
+							previousClouds = true;
+						}
 					}
 					//If the transmittance is low the cloud march can be stopped
 					if (transmittance <= CLOUDS_MIN_TRANSMITTANCE) {
 						break;
 					}
 
-					d += dD;
+					d += 2*dD;
 
 				}
-
+				
 				return float4(scatteredLight, transmittance);
 			}
 
@@ -419,15 +475,6 @@ Shader "Unlit/Test"
 					2, 12, 4, 10,
 					5, 15, 7, 13
 				};
-
-			/*
-				int4x4 reprojection = {
-					1, 15, 9, 7,
-					8, 10, 16, 2,
-					5, 3, 13, 11,
-					12, 14, 4, 6
-				};
-			*/
 
 				//Get uv coordinates of the pixel in the cloud texture, that is updated this frame
 				int pixelNumber = reprojection[_FrameNumber % 4][floor(_FrameNumber / 4)] - 1;
@@ -455,6 +502,9 @@ Shader "Unlit/Test"
 					col2 = clouds(ro, rd);
 					//Tone map the cloud color
 					col2.rgb = 0.2 * pow(col2.rgb, .25);
+					#if defined(UNITY_COLORSPACE_GAMMA)
+						col2.rgb = pow(col2.rgb, 1 / 2.2);
+					#endif
 				}
 				return col2;
 			}	
