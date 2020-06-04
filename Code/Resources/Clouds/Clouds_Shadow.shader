@@ -53,13 +53,13 @@
 				
 				float2 uv = (i.worldPos.xz * 0.00004) + float2(0.5, 0.5);
 				fixed4 col = tex2D(_MainTex, uv);
-				float alpha = 1.66 * (clamp(4 * max(col.r, col.g) - 1.2, 0.0, 0.6));
-
+				float alpha = 1.66 * (clamp(4 * max(max(col.r, col.g),col.b) - 1.2, 0.0, 0.6));
 				float dither =
 					tex3D(_DitherMaskLOD, float3(i.position.xy * 0.25, alpha * 0.9375)).a;
 				clip(dither - 0.01);
 
 				SHADOW_CASTER_FRAGMENT(i);
+
 				
 			}
 			ENDCG
